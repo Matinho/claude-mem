@@ -1,7 +1,7 @@
 # claude-mem local-docker
 
 Paquete portable: worker de claude-mem + Ollama en Docker, sin salida a internet.
-Cada maquina cliente solo lleva el plugin y apunta al worker con `CLAUDE_MEM_WORKER_URL`.
+Cada maquina cliente solo lleva el plugin y apunta al worker con `CLAUDE_MEM_WORKER_HOST` y `CLAUDE_MEM_WORKER_PORT`.
 
 ```
 Maquina cliente (Claude Code + plugin)       Docker (este paquete)
@@ -35,7 +35,9 @@ En `~/.claude-mem/settings.json` de la maquina cliente:
 
 ```json
 {
-  "CLAUDE_MEM_WORKER_URL": "http://127.0.0.1:37777",
+  "CLAUDE_MEM_WORKER_HOST": "127.0.0.1",
+  "CLAUDE_MEM_WORKER_PORT": "37777",
+  "CLAUDE_MEM_HOOK_SPOOL_TRANSPORT": "http",
   "CLAUDE_MEM_WORKER_AUTOSTART": "false",
   "CLAUDE_MEM_WORKER_INGEST_TOKEN": "<el mismo del .env>",
   "CLAUDE_MEM_LOCAL_API_TOKEN": "<el mismo del .env>",
@@ -43,11 +45,19 @@ En `~/.claude-mem/settings.json` de la maquina cliente:
 }
 ```
 
-Los tokens y la URL van en ese `settings.json`, no como variables de entorno.
+Los tokens, el host y el puerto van en ese `settings.json`, no como variables de entorno.
 La unica variable de entorno del cliente es `DO_NOT_TRACK=1` (apaga la telemetria);
 en Claude Code se puede fijar en `~/.claude/settings.json`, bajo la clave `env`.
-`http` plano solo se acepta en loopback. Para usar el worker desde otra maquina
-hace falta HTTPS o un tunel SSH (`ssh -L 37777:127.0.0.1:37777 host`).
+
+**No uses `CLAUDE_MEM_WORKER_URL` con este paquete.** Con esa clave el cliente nunca
+envia `CLAUDE_MEM_LOCAL_API_TOKEN` (para no filtrarlo a un worker remoto) y el worker
+responde 401 en `/api/spool/ingest`: los eventos quedan en cola y nunca llegan.
+Con host y puerto en loopback el cliente si envia el token, y `HOOK_SPOOL_TRANSPORT=http`
+hace que los eventos viajen por HTTP al contenedor en vez de por una carpeta compartida.
+
+Para usar el worker desde otra maquina, haz un tunel SSH que lo exponga en el
+`127.0.0.1:37777` de esa maquina (`ssh -L 37777:127.0.0.1:37777 host`) y usa la misma
+configuracion de arriba.
 
 ## Verificado
 
