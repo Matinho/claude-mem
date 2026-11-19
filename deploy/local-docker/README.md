@@ -43,7 +43,9 @@ En `~/.claude-mem/settings.json` de la maquina cliente:
 }
 ```
 
-Y en el entorno del cliente: `DO_NOT_TRACK=1`.
+Los tokens y la URL van en ese `settings.json`, no como variables de entorno.
+La unica variable de entorno del cliente es `DO_NOT_TRACK=1` (apaga la telemetria);
+en Claude Code se puede fijar en `~/.claude/settings.json`, bajo la clave `env`.
 `http` plano solo se acepta en loopback. Para usar el worker desde otra maquina
 hace falta HTTPS o un tunel SSH (`ssh -L 37777:127.0.0.1:37777 host`).
 
