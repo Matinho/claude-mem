@@ -1,0 +1,80 @@
+# claude-mem worker + Ollama, isolated from the internet.
+#
+#   internal  - no route out. worker and ollama live here only.
+#   edge      - used only by the tiny socat proxy that publishes the port on 127.0.0.1.
+#   egress    - used only by the one-shot "model-puller" (profile "setup").
+name: claude-mem-local
+
+services:
+  ollama:
+    image: ollama/ollama:${OLLAMA_TAG:-latest}
+    restart: unless-stopped
+    networks: [internal]
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: deploy/local-docker/Dockerfile.worker
+    image: claude-mem-worker:local
+    restart: unless-stopped
+    networks: [internal]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      CLAUDE_MEM_LOCAL_API_TOKEN: ${CLAUDE_MEM_LOCAL_API_TOKEN:?set it in .env}
+      CLAUDE_MEM_WORKER_INGEST_TOKEN: ${CLAUDE_MEM_WORKER_INGEST_TOKEN:?set it in .env}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:?set it in .env}
+      OLLAMA_BASE_URL: http://ollama:11434/v1
+    volumes:
+      - claude-mem-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:37777/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+
+  edge:
+    image: alpine/socat:1.8.0.1
+    restart: unless-stopped
+    networks: [internal, edge]
+    depends_on:
+      worker:
+        condition: service_healthy
+    command: ["TCP-LISTEN:37777,fork,reuseaddr", "TCP:worker:37777"]
+    ports:
+      - "127.0.0.1:${CLAUDE_MEM_PORT:-37777}:37777"
+
+  model-puller:
+    image: ollama/ollama:${OLLAMA_TAG:-latest}
+    profiles: ["setup"]
+    networks: [egress]
+    volumes:
+      - ollama-models:/root/.ollama
+    environment:
+      OLLAMA_MODEL: ${OLLAMA_MODEL:?set it in .env}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama serve >/tmp/ollama.log 2>&1 &
+        for i in $$(seq 1 30); do ollama list >/dev/null 2>&1 && break; sleep 1; done
+        ollama pull "$$OLLAMA_MODEL"
+        ollama list
+
+networks:
+  internal:
+    internal: true
+  edge: {}
+  egress: {}
+
+volumes:
+  ollama-models:
+  claude-mem-data:
